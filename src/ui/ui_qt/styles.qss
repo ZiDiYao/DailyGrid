@@ -1,0 +1,74 @@
+/* src/ui/ui_qt/styles.qss */
+
+/* 全局默认字体和背景 */
+QWidget {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    background-color: #0d1117; /* GH_BG */
+    color: #c9d1d9; /* GH_TEXT_MAIN */
+}
+
+/* 主窗口背景 */
+QMainWindow {
+    background-color: #0d1117;
+}
+
+/* 卡片容器样式 (对应 StatCard) */
+QFrame#Card {
+    background-color: #161b22; /* GH_FRAME */
+    border: 1px solid #30363d; /* GH_HOVER */
+    border-radius: 8px;
+}
+
+/* 卡片悬停效果 */
+QFrame#Card:hover {
+    background-color: #21262d; /* GH_CARD_HOVER */
+    border: 1px solid #8b949e;
+}
+
+/* 统计数字 */
+QLabel#StatValue {
+    font-size: 26px;
+    font-weight: bold;
+    color: #c9d1d9;
+    background-color: transparent;
+}
+
+/* 统计标题 */
+QLabel#StatTitle {
+    font-size: 13px;
+    color: #8b949e; /* GH_TEXT_SUB */
+    background-color: transparent;
+}
+
+/* 按钮通用样式 */
+QPushButton {
+    background-color: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #c9d1d9;
+}
+
+QPushButton:hover {
+    background-color: #30363d;
+    border-color: #8b949e;
+}
+
+QPushButton:pressed {
+    background-color: #161b22;
+}
+
+/* 分段控制器 (Segmented Control) 模拟 */
+QFrame#SegmentContainer {
+    background-color: #010409;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+}
+
+/* 卡片容器样式 */
+QFrame#Card {
+    background-color: #161b22; /* GH_FRAME */
+    border: 1px solid #30363d; /* GH_HOVER */
+    border-radius: 10px; /* 稍微加大一点圆角 */
+}

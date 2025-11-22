@@ -1,24 +1,31 @@
 /* src/ui/ui_qt/styles.qss */
 
-/* 全局默认字体和背景 */
+/* 全局默认字体 + 背景渐变 */
 QWidget {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     font-size: 14px;
-    background-color: #0d1117; /* GH_BG */
-    color: #c9d1d9; /* GH_TEXT_MAIN */
+
+    /* Wallpaper Engine 风格深灰蓝渐变 */
+    background: qlineargradient(
+        x1: 0, y1: 0,
+        x2: 0, y2: 1,
+        stop: 0 #1A1D29,   /* 上面 */
+        stop: 1 #0F111A    /* 下面 */
+    );
+
+    color: #c9d1d9;
 }
 
 /* 主窗口背景 */
 QMainWindow {
-    background-color: #0d1117;
+    background: qlineargradient(
+        x1: 0, y1: 0,
+        x2: 0, y2: 1,
+        stop: 0 #1A1D29,
+        stop: 1 #0F111A
+    );
 }
 
-/* 卡片容器样式 (对应 StatCard) */
-QFrame#Card {
-    background-color: #161b22; /* GH_FRAME */
-    border: 1px solid #30363d; /* GH_HOVER */
-    border-radius: 8px;
-}
 
 /* 卡片悬停效果 */
 QFrame#Card:hover {
@@ -66,9 +73,15 @@ QFrame#SegmentContainer {
     border-radius: 6px;
 }
 
-/* 卡片容器样式 */
+/* Wallpaper Engine 风格 — 半透明玻璃面板 */
 QFrame#Card {
-    background-color: #161b22; /* GH_FRAME */
-    border: 1px solid #30363d; /* GH_HOVER */
-    border-radius: 10px; /* 稍微加大一点圆角 */
+    background-color: rgba(22, 27, 34, 180);  /* 深灰蓝 + 玻璃透明感 */
+    border: 1px solid rgba(85, 100, 120, 120); /* 高亮边框 */
+    border-radius: 12px;
+
+    /* 玻璃感：内阴影模拟模糊层 */
+    box-shadow:
+        inset 0 0 25px rgba(255, 255, 255, 0.03),   /* 玻璃高光 */
+        inset 0 0 8px rgba(255, 255, 255, 0.04),    /* 柔光 */
+        0 0 15px rgba(0, 0, 0, 0.5);                /* 外阴影 */
 }

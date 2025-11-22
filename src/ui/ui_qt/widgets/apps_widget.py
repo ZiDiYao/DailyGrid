@@ -4,12 +4,18 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 
+# ❗ 修正 1：使用新的、更现代和数量更多的调色板 ❗
 APP_COLORS = [
-    "#238636",  # 绿
-    "#1f6feb",  # 蓝
-    "#d29922",  # 黄
-    "#a371f7",  # 紫
-    "#f85149",  # 红
+    "#61dafb",  # 浅蓝 (React blue)
+    "#50fa7b",  # 亮绿 (Dracule Green)
+    "#ff79c6",  # 粉色 (Dracule Pink)
+    "#f1fa8c",  # 亮黄 (Dracule Yellow)
+    "#bd93f9",  # 浅紫 (Dracule Purple)
+    "#ffb86c",  # 浅橙 (Dracule Orange)
+    "#8be9fd",  # 浅青 (Dracule Cyan)
+    "#ff6e67",  # 浅红 (Dracule Red)
+    "#bfd7ea",  # 淡蓝 (Light Blue)
+    "#c9e4de",  # 薄荷绿 (Mint Green)
 ]
 
 
@@ -94,7 +100,7 @@ class AppRowWidget(QWidget):
 
 class AppsWidget(QFrame):
     """
-    Top Apps Today 区块 (限制显示 Top 7)
+    Top Apps Today 区块 (限制显示 Top 10，并修正垂直布局)
     """
     clicked = Signal(str)
 
@@ -121,8 +127,8 @@ class AppsWidget(QFrame):
         self.rows_layout.setSpacing(8)
         main_layout.addWidget(self.rows_container)
 
-        # 修正：重新添加 addStretch()，用于将内容向上推，解决内容靠下的问题
-        main_layout.addStretch()
+        # 保持 main_layout 底部无 stretch
+        # main_layout.addStretch() # 这一行保持移除
 
         self.row_widgets: list[AppRowWidget] = []
 
@@ -143,13 +149,16 @@ class AppsWidget(QFrame):
         """
         self.clear_rows()
 
-        # 修正：只取 Top 7 的 App 来显示
-        apps_to_display = apps_data[:7]
+        # 修正：只取 Top 10 的 App 来显示 (与 database limit=10 保持一致)
+        apps_to_display = apps_data[:10]
 
         if not apps_to_display:
             empty = QLabel("No data for today.")
             empty.setStyleSheet("color: #8b949e; font-size: 13px;")
             self.rows_layout.addWidget(empty)
+
+            # ❗ 修正：即使无数据，也要添加 stretch，确保“无数据”标签向上对齐 ❗
+            self.rows_layout.addStretch()
             return
 
         max_sec = max(sec or 0 for _, sec in apps_to_display) or 1
@@ -162,6 +171,7 @@ class AppsWidget(QFrame):
 
         for idx, (name, sec) in enumerate(apps_to_display):
             sec = sec or 0
+            # 颜色直接从新的 APP_COLORS 中按索引取，实现循环
             color = APP_COLORS[idx % len(APP_COLORS)]
             ratio = sec / max_sec if max_sec > 0 else 0.0
 
@@ -170,3 +180,6 @@ class AppsWidget(QFrame):
 
             self.rows_layout.addWidget(row)
             self.row_widgets.append(row)
+
+        # ❗ 修正：在所有 App Rows 后面添加 stretch，将内容列表向上推，解决底部空白问题 ❗
+        self.rows_layout.addStretch()

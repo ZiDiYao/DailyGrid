@@ -244,7 +244,9 @@ class DatabaseManager:
             )
             return cursor.fetchall()
 
-    def get_today_top_apps(self, limit=5):
+    # database.py
+
+    def get_today_top_apps(self, limit=10):
         today_str = str(date.today())
         with self._get_connection() as conn:
             cursor = conn.cursor()

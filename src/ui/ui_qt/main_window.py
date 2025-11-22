@@ -158,22 +158,24 @@ class MainWindow(QMainWindow):
                     if idx >= 0: self.dashboard.year_combo.setCurrentIndex(idx)
 
         year_data = db.get_data_by_year(self.current_year)
-        top_apps = db.get_today_top_apps(limit=7)  # 注意：这里 limit=5，如果需要 Top 7 请修改
+
+        # ❗ 修正：将 limit 提高到 10，确保获取足够的 App 数据 ❗
+        top_apps = db.get_today_top_apps(limit=10)
 
         if self.dashboard:
             self.dashboard.update_heatmap_data(year_data, self.current_year)
-            # AppsWidget 内部会处理 limit=7 的逻辑，这里传递原始数据
+            # AppsWidget 内部的 update_data 会从 top_apps 中取前 7 个进行渲染
             self.dashboard.update_apps_data(top_apps)
 
     def update_ui_loop(self):
         """高频更新：将内存中的实时计数显示在 UI 上"""
 
-        # ❗ 修正：将 .tracker 替换为 .input_listener ❗
+        # 修正：检查 monitor.input_listener 属性 (修复 AttributeError)
         if not self.monitor.input_listener: return
 
         base_time, base_clicks, base_keys = self.db_stats
 
-        # ❗ 修正：将 .tracker 替换为 .input_listener ❗
+        # 修正：从 monitor.input_listener 获取实时计数
         pending_clicks, pending_keys = self.monitor.input_listener.get_current_counts()
 
         total_time = base_time

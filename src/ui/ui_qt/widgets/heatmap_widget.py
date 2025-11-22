@@ -1,218 +1,223 @@
+from PySide6.QtWidgets import QWidget, QToolTip
+from PySide6.QtCore import Qt, Signal, QRectF, QEvent
+from PySide6.QtGui import QPainter, QColor, QCursor
 import datetime
-from PySide6.QtWidgets import QWidget, QToolTip, QSizePolicy
-from PySide6.QtGui import QPainter, QBrush, QColor, QFont
-from PySide6.QtCore import Qt, QRect, QSize, Signal  # 引入 Signal
 
 
 class HeatmapWidget(QWidget):
-    # 【新增】定义一个信号，传出点击的日期字符串 (例如 "2025-11-21")
-    date_clicked = Signal(str)
+    date_clicked = Signal(str)  # 发送 "YYYY-MM-DD"
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMouseTracking(True)
         self.setMinimumHeight(180)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # --- 布局常量 ---
-        self.gap = 3
-        self.label_width_left = 40
-        self.label_height_top = 25
-        self.legend_height_bottom = 40
+        # { "YYYY-MM-DD": (time, clicks, keys) }
+        self.raw_data = {}
+        self.current_year = datetime.date.today().year
+        self.rects = []  # (QRectF, date_str, value)
 
-        # --- 颜色配置 ---
-        self.empty_color = "#2d333b"
-        self.color_schemes = {
-            "Screen Time": ["#9be9a8", "#40c463", "#30a14e", "#216e39"],
-            "Clicks": ["#79c0ff", "#388bfd", "#1f6feb", "#112542"],
-            "Keystrokes": ["#f0b37e", "#d29922", "#b07b16", "#6e4a08"]
+        # 当前显示的模式
+        self.active_metric = "Screen Time"
+        self.base_color = QColor("#238636")
+
+        # 阈值配置
+        self.thresholds = {
+            "Screen Time": 8 * 3600,
+            "Clicks": 5000,
+            "Keystrokes": 10000,
+            "Combined": 100
         }
-        self.current_palette = self.color_schemes["Screen Time"]
-        self.text_color = QColor("#8b949e")
 
-        self.data_map = {}
-        self.rects = []  # 存储每个格子的区域和日期
-        self.year = datetime.date.today().year
-        self.metric_name = "Screen Time"
-        self.thresholds = [1, 5, 10, 20]
-        self.total_weeks = 53
+        # 交互状态
+        self.hovered_date = None
 
-    def minimumSizeHint(self):
-        h = self.label_height_top + 7 * (12 + self.gap) + self.legend_height_bottom
-        return QSize(500, int(h))
+        # 鼠标追踪
+        self.setMouseTracking(True)
 
-    def set_data(self, data_list, year, metric_name="Screen Time"):
-        self.year = year
-        self.metric_name = metric_name
-        self.data_map = {}
+    # ------------ 数据与模式 ------------
 
-        last_day = datetime.date(year, 12, 31)
-        self.total_weeks = int(last_day.strftime("%U")) + 1
-        if self.total_weeks < 53: self.total_weeks = 53
-
-        self.current_palette = self.color_schemes.get(metric_name, self.color_schemes["Screen Time"])
-
-        idx = 1
-        if metric_name == "Clicks":
-            idx = 2
-        elif metric_name == "Keystrokes":
-            idx = 3
-
-        max_val = 0
-        for row in data_list:
-            date_str = row[0]
-            val = row[idx] if row[idx] else 0
-            self.data_map[date_str] = val
-            if val > max_val: max_val = val
-
-        if max_val > 0:
-            self.thresholds = [1, max_val / 4, max_val / 2, max_val * 0.75]
-        else:
-            self.thresholds = [1, 10, 50, 100]
-
+    def set_data(self, data_rows, year):
+        self.current_year = year
+        self.raw_data = {}
+        if data_rows:
+            for row in data_rows:
+                # row: (date, time, clicks, keys)
+                self.raw_data[row[0]] = (row[1] or 0, row[2] or 0, row[3] or 0)
         self.update()
 
+    def set_metric(self, metric_name, color_hex):
+        self.active_metric = metric_name
+        self.base_color = QColor(color_hex)
+        self.update()
+
+    def get_value_for_date(self, date_str):
+        if date_str not in self.raw_data:
+            return 0
+        time, clicks, keys = self.raw_data[date_str]
+
+        if self.active_metric == "Screen Time":
+            return time
+        elif self.active_metric == "Clicks":
+            return clicks
+        elif self.active_metric == "Keystrokes":
+            return keys
+        else:
+            return 0
+
     def get_color(self, value):
-        if value == 0: return self.empty_color
-        if value < self.thresholds[1]: return self.current_palette[0]
-        if value < self.thresholds[2]: return self.current_palette[1]
-        if value < self.thresholds[3]: return self.current_palette[2]
-        return self.current_palette[3]
+        if value == 0:
+            return QColor("#161b22")
+        max_val = self.thresholds.get(self.active_metric, 100)
+        intensity = min(value / max_val, 1.0)
+        alpha = int(50 + (205 * intensity))
+        c = QColor(self.base_color)
+        c.setAlpha(alpha)
+        return c
+
+    # ------------ 绘制 ------------
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        self.rects = []  # 清空碰撞区域
+        painter.setRenderHint(QPainter.Antialiasing, False)
 
-        font = QFont("Segoe UI", 9)
-        painter.setFont(font)
+        # 固定格子大小和间距
+        box_size = 12
+        spacing = 3
 
-        # 1. 计算格子大小
-        available_width = self.width() - self.label_width_left - 40
-        if self.total_weeks > 0:
-            width_based_size = (available_width - (self.total_weeks * self.gap)) / self.total_weeks
-        else:
-            width_based_size = 12
+        # 计算网格总宽度并居中
+        columns = 53  # 够一年用了
+        grid_width = columns * box_size + (columns - 1) * spacing
+        start_x = max(50, (self.width() - grid_width) // 2)
+        start_y = 30
 
-        available_height = self.height() - self.label_height_top - self.legend_height_bottom - 20
-        height_based_size = (available_height - (7 * self.gap)) / 7
+        # 背景
+        painter.fillRect(self.rect(), QColor(20, 27, 36, 240))  # 更接近 WE
 
-        cell_size = int(max(10, min(width_based_size, height_based_size, 28)))
 
-        # 2. 计算居中
-        grid_width = self.total_weeks * (cell_size + self.gap) - self.gap
-        grid_height = 7 * (cell_size + self.gap) - self.gap
-        content_total_width = self.label_width_left + grid_width
-        content_total_height = self.label_height_top + grid_height + self.legend_height_bottom
+        # --- 左侧星期标签 (Mon / Wed / Fri) ---
+        painter.setPen(QColor("#8b949e"))
+        weekday_labels = [("Mon", 0), ("Wed", 2), ("Fri", 4)]
+        for text, row in weekday_labels:
+            y = start_y + row * (box_size + spacing) + box_size - 2
+            painter.drawText(5, y, text)
 
-        start_x = max(0, (self.width() - content_total_width) // 2)
-        start_y = max(0, (self.height() - content_total_height) // 2)
+        # --- 生成格子 ---
+        self.rects = []
 
-        grid_start_x = start_x + self.label_width_left
-        grid_start_y = start_y + self.label_height_top
+        year = self.current_year
+        d1 = datetime.date(year, 1, 1)
+        d2 = datetime.date(year, 12, 31)
 
-        # 3. 绘制星期
-        days = {1: "Mon", 3: "Wed", 5: "Fri"}
-        painter.setPen(self.text_color)
-        for row_idx, text in days.items():
-            y = grid_start_y + row_idx * (cell_size + self.gap)
-            painter.drawText(QRect(start_x, y, self.label_width_left - 8, cell_size),
-                             Qt.AlignRight | Qt.AlignVCenter, text)
+        # 以当年第一周的「周一」作为第 0 列基准
+        first_monday = d1 - datetime.timedelta(days=d1.weekday())
 
-        # 4. 绘制网格
-        start_date = datetime.date(self.year, 1, 1)
-        end_date = datetime.date(self.year, 12, 31)
-        current_date = start_date
-        start_offset = (current_date.weekday() + 1) % 7
+        # 记录每个月第一次出现的列号，用来画月份标签
+        month_first_col = {}
 
-        col = 0
-        row = start_offset
-        last_month_drawn = -1
+        curr = d1
+        while curr <= d2:
+            date_str = str(curr)
 
-        while current_date <= end_date:
-            date_str = current_date.strftime("%Y-%m-%d")
-            value = self.data_map.get(date_str, 0)
+            # row: 周几 (Mon=0..Sun=6)
+            weekday = curr.weekday()
+            row = weekday
 
-            x = grid_start_x + col * (cell_size + self.gap)
-            y = grid_start_y + row * (cell_size + self.gap)
+            # col: 从 first_monday 起算已经过了多少周
+            week_index = (curr - first_monday).days // 7
+            col = week_index
 
-            if row == 0 or (col == 0 and row == start_offset):
-                month = current_date.month
-                if month != last_month_drawn:
-                    month_name = current_date.strftime("%b")
-                    painter.setPen(self.text_color)
-                    painter.drawText(x, grid_start_y - 8, month_name)
-                    last_month_drawn = month
+            if col >= columns:
+                curr += datetime.timedelta(days=1)
+                continue
 
-            rect = QRect(x, y, cell_size, cell_size)
+            x = start_x + col * (box_size + spacing)
+            y = start_y + row * (box_size + spacing)
+            rect = QRectF(x, y, box_size, box_size)
+
+            value = self.get_value_for_date(date_str)
             color = self.get_color(value)
 
-            painter.setBrush(QBrush(QColor(color)))
-            painter.setPen(Qt.NoPen)
-            radius = 3 if cell_size > 16 else 2
-            painter.drawRoundedRect(rect, radius, radius)
+            # 悬停高亮 or 普通绘制
+            if date_str == self.hovered_date:
+                painter.setBrush(color)
+                painter.setPen(QColor("#ffffff"))
+                painter.drawRoundedRect(rect, 2, 2)
+            else:
+                painter.setBrush(color)
+                if value == 0:
+                    painter.setPen(QColor("#252b33"))
+                else:
+                    painter.setPen(Qt.NoPen)
+                painter.drawRoundedRect(rect, 2, 2)
 
-            # 【关键】存入 rects 供点击检测使用
             self.rects.append((rect, date_str, value))
 
-            current_date += datetime.timedelta(days=1)
-            row += 1
-            if row > 6:
-                row = 0
-                col += 1
+            # 月份标签：记录该月第一次出现的列
+            m = curr.month
+            if m not in month_first_col:
+                month_first_col[m] = col
 
-        # 5. 绘制图例
-        legend_y = grid_start_y + grid_height + 15
-        legend_icon_size = max(10, cell_size - 2)
-        legend_gap = 4
-        legend_total_width = 30 + (5 * legend_icon_size + 4 * legend_gap) + 30 + 10
-        grid_right_edge = grid_start_x + grid_width
-        legend_start_x = grid_right_edge - legend_total_width
+            curr += datetime.timedelta(days=1)
 
-        painter.setPen(self.text_color)
-        painter.drawText(QRect(legend_start_x, legend_y, 30, legend_icon_size), Qt.AlignRight | Qt.AlignVCenter, "Less")
+        # --- 绘制月份标签 ---
+        painter.setPen(QColor("#8b949e"))
+        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        for m in range(1, 13):
+            if m in month_first_col:
+                col = month_first_col[m]
+                x = start_x + col * (box_size + spacing)
+                painter.drawText(x, start_y - 10, month_names[m - 1])
 
-        current_x = legend_start_x + 35
-        full_palette = [self.empty_color] + self.current_palette
-        for color_code in full_palette:
-            rect = QRect(current_x, legend_y, legend_icon_size, legend_icon_size)
-            painter.setBrush(QBrush(QColor(color_code)))
-            painter.drawRoundedRect(rect, 2, 2)
-            current_x += legend_icon_size + legend_gap
-
-        painter.setPen(self.text_color)
-        painter.drawText(QRect(current_x + 5, legend_y, 30, legend_icon_size), Qt.AlignLeft | Qt.AlignVCenter, "More")
+    # ------------ 鼠标交互 ------------
 
     def mouseMoveEvent(self, event):
-        pos = event.pos()
-        found = False
+        pos = event.position()
+        found_hover = False
+
         for rect, date_str, value in self.rects:
             if rect.contains(pos):
-                if self.metric_name == "Screen Time":
-                    h = int(value // 3600)
-                    m = int((value % 3600) // 60)
-                    val_text = f"{h}h {m}m"
-                else:
-                    val_text = f"{value}"
-                # 鼠标变成小手
-                self.setCursor(Qt.PointingHandCursor)
-                tip_text = f"{date_str}\n{val_text} {self.metric_name}"
-                QToolTip.showText(event.globalPos(), tip_text, self)
-                found = True
+                found_hover = True
+                if self.hovered_date != date_str:
+                    self.hovered_date = date_str
+                    self.setCursor(QCursor(Qt.PointingHandCursor))
+                    self.update()
                 break
 
-        if not found:
-            self.setCursor(Qt.ArrowCursor)
-            QToolTip.hideText()
+        if not found_hover and self.hovered_date is not None:
+            self.hovered_date = None
+            self.setCursor(QCursor(Qt.ArrowCursor))
+            self.update()
+
         super().mouseMoveEvent(event)
 
-    # 【新增】点击事件处理
+    def leaveEvent(self, event):
+        if self.hovered_date is not None:
+            self.hovered_date = None
+            self.setCursor(QCursor(Qt.ArrowCursor))
+            self.update()
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            pos = event.pos()
+        if event.button() == Qt.LeftButton and self.hovered_date:
+            self.date_clicked.emit(self.hovered_date)
+        super().mousePressEvent(event)
+
+    def event(self, event):
+        # ToolTip 处理
+        if event.type() == QEvent.Type.ToolTip:
+            help_event = event
+            pos = help_event.pos()
             for rect, date_str, value in self.rects:
                 if rect.contains(pos):
-                    # 触发信号，传递日期
-                    self.date_clicked.emit(date_str)
-                    return
-        super().mousePressEvent(event)
+                    val_str = str(int(value))
+                    if self.active_metric == "Screen Time":
+                        h = int(value // 3600)
+                        m = int((value % 3600) // 60)
+                        val_str = f"{h}h {m}m"
+                    QToolTip.showText(
+                        help_event.globalPos(),
+                        f"{date_str}\n{self.active_metric}: {val_str}"
+                    )
+                    return True
+        return super().event(event)
